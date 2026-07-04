@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-link</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 40rem;
+    margin: 4rem auto;
+    padding: 0 1rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<main id="content"></main>
+
+<script type="module">
+  const pathname = window.location.pathname;
+  const firstSegment = pathname.split("/").filter(Boolean)[0] || "";
+  const contentEl = document.getElementById("content");
+
+  function aliasFromPath(path, basePrefix) {
+    let p = path;
+    if (basePrefix && p.indexOf(basePrefix) === 0) {
+      p = p.slice(basePrefix.length);
+    }
+    p = p.replace(/^\/+|\/+$/g, "");
+    try {
+      return decodeURIComponent(p);
+    } catch (e) {
+      return p;
+    }
+  }
+
+  function findByAlias(links, alias) {
+    const needle = alias.toLowerCase();
+    return links.find((entry) => entry.alias.toLowerCase() === needle);
+  }
+
+  async function probeLinks(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function showNotFound(alias, homeHref) {
+    const heading = alias ? `No link found for &ldquo;${escapeHtml(alias)}&rdquo;` : "No link found";
+    contentEl.innerHTML = `<h1>${heading}</h1><p><a href="${homeHref}">Go to the link directory</a></p>`;
+  }
+
+  function showConfigError() {
+    contentEl.innerHTML =
+      "<h1>Unable to load link configuration</h1>" +
+      "<p>Could not find links.json at the site root or under the first path segment.</p>";
+  }
+
+  async function boot() {
+    let basePrefix = "";
+    let links = await probeLinks("/links.json");
+
+    if (links === null) {
+      if (!firstSegment) {
+        showConfigError();
+        return;
+      }
+      basePrefix = "/" + firstSegment;
+      links = await probeLinks(`${basePrefix}/links.json`);
+      if (links === null) {
+        showConfigError();
+        return;
+      }
+    }
+
+    const alias = aliasFromPath(pathname, basePrefix);
+    const homeHref = `${basePrefix}/`;
+
+    if (!alias) {
+      showNotFound("", homeHref);
+      return;
+    }
+
+    const entry = findByAlias(links, alias);
+    if (entry) {
+      window.location.replace(entry.url);
+    } else {
+      showNotFound(alias, homeHref);
+    }
+  }
+
+  boot().catch(() => showConfigError());
+</script>
+</body>
+</html>

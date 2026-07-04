@@ -1,0 +1,91 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+#search {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  margin: 1rem 0;
+  border: 1px solid #8888;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+}
+
+#count {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+#link-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.link-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #8884;
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.link-item a {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.link-item a:hover {
+  text-decoration: underline;
+}
+
+.link-item .description {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.empty {
+  opacity: 0.6;
+  padding: 0.5rem 0;
+}
+
+#pager {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+#pager button {
+  font-size: 0.9rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid #8888;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+#pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.page-label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
