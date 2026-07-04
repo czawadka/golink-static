@@ -46,12 +46,27 @@ directly anyway).
 
 - `src/assets/links.js` — pure functions only (`aliasFromPath`, `findByAlias`,
   `filterLinks`, `paginate`), no fetching, no DOM, no globals. This is the
-  single source of truth for alias/lookup/pagination logic and the only file
-  that has unit tests (see below).
+  single source of truth for alias/lookup/pagination logic over link data.
+- `src/assets/pager.js` — pure `pagerState(page, totalPages)`, no DOM. Derives
+  prev/next disabled flags, the "Page X of Y" label, and the target page
+  numbers for prev/next clicks, so that button-state/off-by-one logic is
+  unit tested instead of only eyeballed.
+- `src/assets/loader.js` — `loadLinks(fetchFn, url)`, no DOM, no global
+  `fetch` reference (it's passed in, so tests can inject a fake). Always
+  *resolves* a discriminated `{ ok: true, links }` / `{ ok: false, message }`
+  result rather than rejecting, which is what makes the fetch/HTTP-status/
+  JSON-parse error handling unit testable.
 - `src/assets/config.js` — deployment-level settings (currently just
   `PAGE_SIZE`), kept separate from `links.json`'s content data.
-- `src/assets/app.js` — `index.html`'s glue: fetches `links.json`, calls into
-  `links.js` for filtering/pagination, and only handles DOM rendering itself.
+- `src/assets/app.js` — `index.html`'s glue: calls `loadLinks`/`pagerState`/
+  `links.js` for the actual logic and handles DOM rendering and event
+  wiring itself. Its top-level code only calls `init(document, fetch)`;
+  `init(doc, fetchFn)` itself is exported and takes the document/fetch as
+  parameters precisely so tests can inject a fake DOM (via `jsdom`) and a
+  fake `fetchFn` instead of touching the real browser globals. This also
+  guards against `index.html`'s element IDs (`#search`, `#link-list`,
+  `#pager`, `#count`) drifting out of sync with `app.js`, since the test
+  loads the real `src/index.html` markup rather than a hand-rolled fixture.
 - `src/404.html` inlines its own network-probing bootstrap (has to — it can't
   know the base prefix needed to load an external script until it's detected
   it), then dynamically `import()`s `assets/links.js` for the actual
@@ -64,13 +79,17 @@ directly anyway).
   handler was the real fix, and it lets `404.html` reuse `links.js` safely.
 
 Everything else is plain ES modules (`export`/`import`) — no `window`
-globals, no build step, no dependencies.
+globals, no build step, no runtime dependencies. The deployed site itself
+(everything under `src/`) still needs zero dependencies to serve.
 
 ## Running tests
 
-`src/assets/links.js` has no DOM/browser dependencies, so it can be imported
-directly by Node's built-in test runner — no bundler, no test framework
-dependency:
+`src/assets/links.js`, `src/assets/pager.js`, and `src/assets/loader.js` have
+no DOM/browser dependencies, so they're imported directly by Node's built-in
+test runner. `src/assets/app.js`'s exported `init()` takes a DOM `document`
+as a parameter, so `tests/app.test.js` supplies one via `jsdom` (the one
+devDependency in `package.json`, dev-time only — it's not part of the
+deployed site and doesn't affect `src/`'s zero-runtime-dependency bundle):
 
 ```
 npm test
@@ -78,8 +97,7 @@ npm test
 
 (equivalent to `node --test`, which picks up `tests/*.test.js`). This
 requires Node.js on your machine — it's a dev-time tool for running the test
-suite, separate from the deployed site itself, which still needs zero
-runtime dependencies to serve.
+suite, separate from the deployed site itself.
 
 `.github/workflows/pages.yml` runs this on every push and pull request via a
 `test` job, and the `deploy` job (`needs: test`) only runs on pushes to
