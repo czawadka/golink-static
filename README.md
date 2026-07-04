@@ -6,7 +6,7 @@ static file host.
 
 ## Adding a link
 
-Edit `links.json` and add an entry:
+Edit `src/links.json` and add an entry:
 
 ```json
 { "alias": "docs", "url": "https://example.com/docs", "description": "Team documentation home" }
@@ -29,12 +29,18 @@ This simulates today's GitHub Pages URL shape locally. Open the printed URL,
 try the search box, and visit `/docs` or a made-up alias to see the redirect
 and not-found behavior.
 
+Run the test suite (requires Node.js):
+
+```
+npm test
+```
+
 ## Hosting
 
 **Now — GitHub Pages:**
 1. Push to a public repo.
-2. Settings → Pages → Source: Deploy from branch → `main` / `/ (root)`.
-3. Done — `404.html` and `.nojekyll` are already in place.
+2. Settings → Pages → Source: **GitHub Actions**.
+3. Done — `.github/workflows/pages.yml` publishes `src/` on every push to `main`.
 
 **Later — custom domain or an internal `go/` shortcut:** no code changes
 needed. The site auto-detects its own base path at runtime (see

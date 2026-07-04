@@ -25,3 +25,14 @@ export function filterLinks(links, query) {
     return alias.includes(q) || description.includes(q);
   });
 }
+
+export function paginate(items, page, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const clampedPage = Math.min(Math.max(page, 1), totalPages);
+  const start = (clampedPage - 1) * pageSize;
+  return {
+    pageItems: items.slice(start, start + pageSize),
+    page: clampedPage,
+    totalPages
+  };
+}

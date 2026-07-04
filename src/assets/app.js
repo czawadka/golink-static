@@ -1,4 +1,4 @@
-import { filterLinks } from "./links.js";
+import { filterLinks, paginate } from "./links.js";
 import { PAGE_SIZE } from "./config.js";
 
 let allLinks = [];
@@ -12,12 +12,10 @@ const countEl = document.getElementById("count");
 
 function render() {
   const visible = filterLinks(allLinks, query);
-  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  if (page > totalPages) page = totalPages;
-  if (page < 1) page = 1;
-
-  const start = (page - 1) * PAGE_SIZE;
-  const pageItems = visible.slice(start, start + PAGE_SIZE);
+  const paginated = paginate(visible, page, PAGE_SIZE);
+  page = paginated.page;
+  const totalPages = paginated.totalPages;
+  const pageItems = paginated.pageItems;
 
   listEl.innerHTML = "";
   if (pageItems.length === 0) {

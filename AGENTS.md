@@ -6,12 +6,16 @@ HTML/JS/JSON is all it needs.
 
 ## How it works
 
-- `links.json` is the single source of truth: a JSON array of
+- `src/` is the entire deployable site — everything in it is what actually
+  gets published to GitHub Pages / served by nginx. Everything outside
+  `src/` (docs, tests, dev tooling, Docker/CI config) is project meta, not
+  site content.
+- `src/links.json` is the single source of truth: a JSON array of
   `{ "alias": "...", "url": "...", "description": "..." }`. Order in the file
   is the display order on the landing page. `description` is optional.
-- `index.html` is a search + paginated listing page over `links.json`.
-- `404.html` is the redirect handler. Any request for `/<alias>` doesn't match
-  a real file, so the host (GitHub Pages / nginx) falls back to serving
+- `src/index.html` is a search + paginated listing page over `links.json`.
+- `src/404.html` is the redirect handler. Any request for `/<alias>` doesn't
+  match a real file, so the host (GitHub Pages / nginx) falls back to serving
   `404.html`. Its inline script reads the requested path, looks up the alias
   in `links.json`, and does `location.replace(url)`.
 - Aliases can contain slashes (`team/eng` is a single alias, not nested
@@ -40,28 +44,50 @@ directly anyway).
 
 ## Code layout
 
-- `assets/links.js` — pure functions only (`aliasFromPath`, `findByAlias`,
-  `filterLinks`), no fetching, no globals. Loaded as an ES module.
-- `assets/config.js` — deployment-level settings (currently just
+- `src/assets/links.js` — pure functions only (`aliasFromPath`, `findByAlias`,
+  `filterLinks`, `paginate`), no fetching, no DOM, no globals. This is the
+  single source of truth for alias/lookup/pagination logic and the only file
+  that has unit tests (see below).
+- `src/assets/config.js` — deployment-level settings (currently just
   `PAGE_SIZE`), kept separate from `links.json`'s content data.
-- `assets/app.js` — `index.html`'s glue: fetches `links.json`, renders the
-  list, wires up search and pagination.
-- `404.html` inlines everything, including its own copies of `aliasFromPath`
-  and `findByAlias` (duplicated from `assets/links.js` rather than fetched or
-  dynamically imported). This is deliberate: it originally loaded
-  `assets/links.js` via a dynamic `import()` after detecting the base prefix,
-  but that added a second network round-trip with a failure mode that showed
-  as an indefinite "Redirecting…" with no error surfaced. Inlining removes
-  that dependency entirely, so a redirect only ever needs the `links.json`
-  probe fetch.
+- `src/assets/app.js` — `index.html`'s glue: fetches `links.json`, calls into
+  `links.js` for filtering/pagination, and only handles DOM rendering itself.
+- `src/404.html` inlines its own network-probing bootstrap (has to — it can't
+  know the base prefix needed to load an external script until it's detected
+  it), then dynamically `import()`s `assets/links.js` for the actual
+  alias/lookup logic once the prefix is known, so that logic isn't duplicated.
+  The whole `boot()` flow is wrapped in `.catch(() => showConfigError())` —
+  this is what actually matters for reliability: earlier, a missing catch
+  here meant any failure (including a failed dynamic import) left the page
+  stuck on "Redirecting…" forever with no error surfaced. Duplicating the
+  functions inline was tried as a fix at one point and reverted — the catch
+  handler was the real fix, and it lets `404.html` reuse `links.js` safely.
 
 Everything else is plain ES modules (`export`/`import`) — no `window`
-globals, no build step, no dependencies. If you change the alias/lookup
-logic, update both `assets/links.js` and the inlined copy in `404.html`.
+globals, no build step, no dependencies.
+
+## Running tests
+
+`src/assets/links.js` has no DOM/browser dependencies, so it can be imported
+directly by Node's built-in test runner — no bundler, no test framework
+dependency:
+
+```
+npm test
+```
+
+(equivalent to `node --test`, which picks up `tests/*.test.js`). This
+requires Node.js on your machine — it's a dev-time tool for running the test
+suite, separate from the deployed site itself, which still needs zero
+runtime dependencies to serve.
+
+`.github/workflows/pages.yml` runs this on every push and pull request via a
+`test` job, and the `deploy` job (`needs: test`) only runs on pushes to
+`main` after tests pass — a failing test blocks deployment.
 
 ## Adding or editing a link
 
-Edit `links.json`, commit, push. Aliases are matched case-insensitively, so
+Edit `src/links.json`, commit, push. Aliases are matched case-insensitively, so
 don't define two aliases that differ only by case. Avoid aliases that
 collide with real top-level paths (`assets`, `index`, `404`, `links`,
 `favicon.ico`, ...) — the server serves the real file/folder before ever
@@ -82,16 +108,25 @@ or plain `python3 dev/serve.py [--prefix ...]` if you don't have `uv`
 (zero dependencies either way).
 
 Then visit the printed URL, try searching, and visit `/docs`, `/team/eng`,
-and a bogus alias to exercise the redirect and not-found paths.
+and a bogus alias to exercise the redirect and not-found paths. (`serve.py`
+serves `src/`, not the repo root.)
 
 ## GitHub Pages setup
 
+The site lives in `src/`, not the repo root or `docs/`, so GitHub Pages'
+"Deploy from branch" mode (which only supports those two locations) can't
+publish it directly. `.github/workflows/pages.yml` handles this instead —
+it's not a build step (there's nothing to build), just
+`actions/upload-pages-artifact` pointed at `src/` followed by
+`actions/deploy-pages`.
+
 1. Push to a **public** repo (private-repo Pages needs GitHub Pro/Team/Enterprise).
-2. Settings → Pages → Source: Deploy from branch → `main` / `/ (root)`.
-3. `.nojekyll` is already present at the repo root — required so GitHub
-   doesn't run the site through Jekyll (which mangles `_`-prefixed paths and
-   adds unneeded processing for a plain static/JS site).
-4. `404.html` at the repo root is picked up automatically, no extra config.
+2. Settings → Pages → Source: **GitHub Actions** (not "Deploy from branch").
+3. Push to `main` (or run the workflow manually) — `.github/workflows/pages.yml`
+   publishes `src/` as-is.
+4. `src/.nojekyll` disables Jekyll processing (needs to live inside `src/`,
+   the actual published root, not the repo root).
+5. `src/404.html` is picked up automatically by GitHub Pages, no extra config.
 
 ## Docker
 

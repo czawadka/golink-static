@@ -1,5 +1,5 @@
 FROM nginx:alpine
 
-COPY index.html 404.html links.json /usr/share/nginx/html/
-COPY assets/ /usr/share/nginx/html/assets/
+COPY src/index.html src/404.html src/links.json /usr/share/nginx/html/
+COPY src/assets/ /usr/share/nginx/html/assets/
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

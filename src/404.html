@@ -22,24 +22,6 @@
   const firstSegment = pathname.split("/").filter(Boolean)[0] || "";
   const contentEl = document.getElementById("content");
 
-  function aliasFromPath(path, basePrefix) {
-    let p = path;
-    if (basePrefix && p.indexOf(basePrefix) === 0) {
-      p = p.slice(basePrefix.length);
-    }
-    p = p.replace(/^\/+|\/+$/g, "");
-    try {
-      return decodeURIComponent(p);
-    } catch (e) {
-      return p;
-    }
-  }
-
-  function findByAlias(links, alias) {
-    const needle = alias.toLowerCase();
-    return links.find((entry) => entry.alias.toLowerCase() === needle);
-  }
-
   async function probeLinks(url) {
     try {
       const r = await fetch(url);
@@ -84,6 +66,7 @@
       }
     }
 
+    const { aliasFromPath, findByAlias } = await import(`${basePrefix}/assets/links.js`);
     const alias = aliasFromPath(pathname, basePrefix);
     const homeHref = `${basePrefix}/`;
 

@@ -4,9 +4,9 @@
 # ///
 """Local dev server that mimics GitHub Pages' / nginx's 404.html fallback behavior.
 
-Serves the repo root as static files. Any request that doesn't resolve to a
-real file gets a 404 status with 404.html's content as the body, matching
-GitHub Pages and the docker/nginx.conf setup.
+Serves src/ (the deployable site) as static files. Any request that doesn't
+resolve to a real file gets a 404 status with 404.html's content as the
+body, matching GitHub Pages and the docker/nginx.conf setup.
 
 Use --prefix to simulate GitHub Pages' default project-page topology
 (https://user.github.io/<repo>/...) locally, e.g.:
@@ -24,7 +24,7 @@ import os
 import socketserver
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "src"
 
 
 def make_handler(prefix_path):
