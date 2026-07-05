@@ -1,9 +1,10 @@
 name: Deploy GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -16,31 +17,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  build-pages:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
         with:
-          node-version-file: '.node-version'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm test
-
-  deploy:
-    needs: test
-    if: github.event_name != 'pull_request'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Provide links.json (fall back to example)
         run: '[ -f src/links.json ] || cp src/links.example.json src/links.json'
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: src
+
+  deploy-pages:
+    needs: build-pages
+    environment:
+      name: github-pages
+      url: ${{ fromJSON(steps.deployment.outputs.outputs).page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: Wandalen/wretry.action@v3
+        with:
+          action: actions/deploy-pages@v5
+          attempt_limit: 3
+          attempt_delay: 15000
