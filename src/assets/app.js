@@ -1,10 +1,8 @@
 import { filterLinks, paginate } from "./links.js";
 import { pagerState } from "./pager.js";
 import { loadLinks } from "./loader.js";
-import { PAGE_SIZE } from "./config.js";
+import { PAGE_SIZE, SEARCH_PARAM } from "./config.js";
 import { getParam, setParam } from "./url.js";
-
-const SEARCH_PARAM = "s";
 
 export function init(doc, fetchFn) {
   let allLinks = [];
