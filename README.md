@@ -4,9 +4,28 @@ A self-hosted go-link / URL-shortener service. Visiting `/<alias>` redirects
 to a URL you configure — no backend, no database, no build step. Just a
 static file host.
 
+## Getting started (using this for your own links)
+
+**The first thing to do is create your own `src/links.json` and commit it — this
+is your link database.** Copy the template that ships with this repo and edit it:
+
+```
+cp src/links.example.json src/links.json
+# edit src/links.json to add your links
+git add src/links.json && git commit -m "Add my links"
+```
+
+This repo intentionally does **not** track `src/links.json` — it ships
+`src/links.example.json` as a template and demo data instead. That's what lets
+you fork this project, keep your own committed `links.json`, and still
+`git pull` upstream updates with **no merge conflicts** on your links (upstream
+never touches that file). The site always loads `links.json` at runtime; when
+it's absent (this repo's own demo, or before you've created one) the deploy
+falls back to `links.example.json`.
+
 ## Adding a link
 
-Edit `src/links.json` and add an entry:
+Edit `src/links.json` (the file you created above) and add an entry:
 
 ```json
 { "alias": "docs", "url": "https://example.com/docs", "description": "Team documentation home" }
