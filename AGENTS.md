@@ -132,7 +132,10 @@ npm test
 
 (equivalent to `node --test`, which picks up `tests/*.test.js`). This
 requires Node.js on your machine — it's a dev-time tool for running the test
-suite, separate from the deployed site itself.
+suite, separate from the deployed site itself. `.node-version` pins the
+version CI uses; [fnm](https://github.com/Schniz/fnm) picks it up
+automatically (`eval "$(fnm env)"` once per shell, then `fnm use` in the repo
+root) if that's not already wired into your shell's `cd` hook.
 
 `.github/workflows/pages.yml` runs this on every push and pull request via a
 `test` job, and the `deploy` job (`needs: test`) only runs on pushes to
