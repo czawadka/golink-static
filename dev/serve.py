@@ -28,6 +28,14 @@ ROOT = Path(__file__).resolve().parent.parent / "src"
 
 
 def make_handler(prefix_path):
+    # Decide the links source once at startup, mirroring the build-time copy the
+    # Docker image and Pages workflow do: serve the real links.json if it exists
+    # (a downstream fork's committed link database), otherwise fall back to the
+    # committed links.example.json (this repo's demo data). Deciding here avoids
+    # both a per-request check and littering the working tree with an untracked
+    # links.json when developing upstream.
+    links_source = "/links.json" if (ROOT / "links.json").is_file() else "/links.example.json"
+
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -44,6 +52,9 @@ def make_handler(prefix_path):
                 else:
                     self.send_404()
                     return
+
+            if effective_path == "/links.json":
+                effective_path = links_source
 
             fs_path = self.translate_path(effective_path)
             if os.path.isdir(fs_path):
