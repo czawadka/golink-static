@@ -108,6 +108,31 @@ test("init renders a pager and Next click advances the page", async () => {
   assert.equal(nextBtnAfter.disabled, true);
 });
 
+test("init paginates through 3 pages, toggling button state at each end", async () => {
+  const doc = await setup(fakeFetchOk(manyLinks(25)));
+  const pagerEl = doc.getElementById("pager");
+  const btn = (label) => [...pagerEl.querySelectorAll("button")].find((b) => b.textContent === label);
+
+  assert.match(pagerEl.textContent, /Page 1 of 3/);
+  assert.equal(btn("Prev").disabled, true);
+  assert.equal(btn("Next").disabled, false);
+
+  btn("Next").click();
+  assert.match(pagerEl.textContent, /Page 2 of 3/);
+  assert.equal(btn("Prev").disabled, false);
+  assert.equal(btn("Next").disabled, false);
+
+  btn("Next").click();
+  assert.match(pagerEl.textContent, /Page 3 of 3/);
+  assert.equal(btn("Prev").disabled, false);
+  assert.equal(btn("Next").disabled, true);
+
+  btn("Prev").click();
+  assert.match(pagerEl.textContent, /Page 2 of 3/);
+  assert.equal(btn("Prev").disabled, false);
+  assert.equal(btn("Next").disabled, false);
+});
+
 test("searching filters the list and resets to page 1", async () => {
   const doc = await setup(
     fakeFetchOk([
