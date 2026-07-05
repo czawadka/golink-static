@@ -27,12 +27,9 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  deploy:
+  build-pages:
     needs: test
     if: github.event_name != 'pull_request'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,5 +39,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: src
+
+  deploy-pages:
+    needs: build-pages
+    environment:
+      name: github-pages
+      url: ${{ fromJSON(steps.deployment.outputs.outputs).page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: Wandalen/wretry.action@v3
+        with:
+          action: actions/deploy-pages@v5
+          attempt_limit: 3
+          attempt_delay: 15000
