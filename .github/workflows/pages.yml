@@ -36,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Provide links.json (fall back to example)
+        run: '[ -f src/links.json ] || cp src/links.example.json src/links.json'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

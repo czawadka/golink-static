@@ -10,9 +10,15 @@ HTML/JS/JSON is all it needs.
   gets published to GitHub Pages / served by nginx. Everything outside
   `src/` (docs, tests, dev tooling, Docker/CI config) is project meta, not
   site content.
-- `src/links.json` is the single source of truth: a JSON array of
+- `src/links.json` is the single source of truth at runtime: a JSON array of
   `{ "alias": "...", "url": "...", "description": "..." }`. Order in the file
   is the display order on the landing page. `description` is optional.
+- **This repo does not track `src/links.json`.** It ships
+  `src/links.example.json` (a committed template + the demo/test data) instead,
+  and each deploy path provisions `links.json` from it when a real one is absent
+  (see "Example vs. real link data" below). A downstream fork creates and
+  commits its own `src/links.json` as its link database; because upstream never
+  tracks that path, the fork's `links.json` never conflicts on `git pull`.
 - `src/index.html` is a search + paginated listing page over `links.json`.
 - `src/404.html` is the redirect handler. Any request for `/<alias>` doesn't
   match a real file, so the host (GitHub Pages / nginx) falls back to serving
@@ -20,6 +26,35 @@ HTML/JS/JSON is all it needs.
   in `links.json`, and does `location.replace(url)`.
 - Aliases can contain slashes (`team/eng` is a single alias, not nested
   paths) — the alias is everything after the site's base prefix.
+
+## Example vs. real link data
+
+`src/links.json` is the file the site loads at runtime, but this repo tracks
+only `src/links.example.json`. This split is what lets the project be forked:
+upstream keeps shipping demo data (so its own GitHub Pages/Docker/dev server
+work standalone), while a downstream fork commits its own `src/links.json` and
+pulls upstream updates without ever conflicting on it — upstream doesn't track
+that path. It is **not** gitignored; downstream is expected to `git add` it.
+
+Runtime is deliberately untouched: `app.js` and `404.html` still fetch a single
+`/links.json`, so the base-prefix detection below needs no extra probes. Each
+serving context instead produces `/links.json`, falling back to
+`links.example.json` only when the real file is absent — and always **decides
+once at build/deploy time**, since the served file is a static fact for a given
+deploy:
+
+- **GitHub Pages** (`.github/workflows/pages.yml`): a `deploy`-job step copies
+  the example to `links.json` if the checkout doesn't already have one. The CI
+  checkout is ephemeral, so no committed tree is touched.
+- **Docker** (`docker/Dockerfile`): `COPY src/` brings in whatever exists
+  (`links.example.json` always; `links.json` only for a downstream build), then
+  a build-time `RUN` copies the example to `links.json` if it's missing.
+  `docker/nginx.conf` stays a plain `try_files` — nginx does no per-request
+  fallback.
+- **Dev server** (`dev/serve.py`): picks the source once at startup (real
+  `links.json` if present, else `links.example.json`) and serves it at the
+  `/links.json` URL. The working tree isn't ephemeral, so it deliberately does
+  not create an untracked file.
 
 ## Base-prefix auto-detection
 
@@ -105,7 +140,9 @@ suite, separate from the deployed site itself.
 
 ## Adding or editing a link
 
-Edit `src/links.json`, commit, push. Aliases are matched case-insensitively, so
+Edit your `src/links.json`, commit, push. (If you've just forked and don't have
+one yet, `cp src/links.example.json src/links.json` first — see "Example vs.
+real link data".) Aliases are matched case-insensitively, so
 don't define two aliases that differ only by case. Avoid aliases that
 collide with real top-level paths (`assets`, `index`, `404`, `links`,
 `favicon.ico`, ...) — the server serves the real file/folder before ever
@@ -156,6 +193,12 @@ docker run -p 8080:80 golink-static
 Built now (not just planned) to validate that the same static bundle and
 404.html mechanism works identically outside GitHub Pages — `docker/nginx.conf`
 uses `error_page 404 /404.html;` to reproduce the same fallback behavior.
+
+`COPY src/` bakes in `links.example.json` (and `links.json` too, if the build
+context has one), and a build-time `RUN` provisions `links.json` from the
+example when it's absent — so a plain `docker build` of this repo produces a
+working demo image, and a downstream fork's committed `links.json` is used as-is
+(see "Example vs. real link data").
 
 ## Known limitations / future ideas
 
