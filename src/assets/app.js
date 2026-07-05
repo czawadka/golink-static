@@ -1,17 +1,20 @@
 import { filterLinks, paginate } from "./links.js";
 import { pagerState } from "./pager.js";
 import { loadLinks } from "./loader.js";
-import { PAGE_SIZE } from "./config.js";
+import { PAGE_SIZE, SEARCH_PARAM } from "./config.js";
+import { getParam, setParam } from "./url.js";
 
 export function init(doc, fetchFn) {
   let allLinks = [];
-  let query = "";
+  let query = getParam(doc.location.href, SEARCH_PARAM);
   let page = 1;
 
   const searchInput = doc.getElementById("search");
   const listEl = doc.getElementById("link-list");
   const pagerEl = doc.getElementById("pager");
   const countEl = doc.getElementById("count");
+
+  searchInput.value = query;
 
   function render() {
     const visible = filterLinks(allLinks, query);
@@ -80,6 +83,7 @@ export function init(doc, fetchFn) {
   searchInput.addEventListener("input", (e) => {
     query = e.target.value;
     page = 1;
+    doc.defaultView.history.replaceState(null, "", setParam(doc.location.href, SEARCH_PARAM, query));
     render();
   });
 

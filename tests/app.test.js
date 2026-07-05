@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { init } from "../src/assets/app.js";
+import { SEARCH_PARAM } from "../src/assets/config.js";
 
 const indexHtml = readFileSync(
   fileURLToPath(new URL("../src/index.html", import.meta.url)),
@@ -35,8 +36,8 @@ function manyLinks(count) {
   }));
 }
 
-async function setup(fetchFn) {
-  const dom = new JSDOM(indexHtml);
+async function setup(fetchFn, url = "https://go.example/") {
+  const dom = new JSDOM(indexHtml, { url });
   await init(dom.window.document, fetchFn);
   return dom.window.document;
 }
@@ -147,4 +148,38 @@ test("searching filters the list and resets to page 1", async () => {
   const items = doc.querySelectorAll("#link-list .link-item");
   assert.equal(items.length, 1);
   assert.equal(items[0].querySelector("a").textContent, "wiki");
+});
+
+test("init prepopulates search from the SEARCH_PARAM= URL param and filters results", async () => {
+  const doc = await setup(
+    fakeFetchOk([
+      { alias: "docs", url: "https://example.com/docs" },
+      { alias: "wiki", url: "https://example.com/wiki" }
+    ]),
+    `https://go.example/?${SEARCH_PARAM}=wiki`
+  );
+  assert.equal(doc.getElementById("search").value, "wiki");
+  const items = doc.querySelectorAll("#link-list .link-item");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].querySelector("a").textContent, "wiki");
+});
+
+test("typing into search updates the SEARCH_PARAM= URL param live", async () => {
+  const doc = await setup(fakeFetchOk([{ alias: "docs", url: "https://example.com/docs" }]));
+  const searchInput = doc.getElementById("search");
+  searchInput.value = "doc";
+  searchInput.dispatchEvent(new doc.defaultView.Event("input", { bubbles: true }));
+  assert.equal(doc.location.search, `?${SEARCH_PARAM}=doc`);
+});
+
+test("clearing the search box removes SEARCH_PARAM from the URL", async () => {
+  const doc = await setup(
+    fakeFetchOk([{ alias: "wiki", url: "https://example.com/wiki" }]),
+    `https://go.example/?${SEARCH_PARAM}=wiki`
+  );
+  const searchInput = doc.getElementById("search");
+  searchInput.value = "";
+  searchInput.dispatchEvent(new doc.defaultView.Event("input", { bubbles: true }));
+  assert.equal(doc.location.search, "");
+  assert.equal(doc.location.href, "https://go.example/");
 });

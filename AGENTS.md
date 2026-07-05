@@ -19,7 +19,9 @@ HTML/JS/JSON is all it needs.
   (see "Example vs. real link data" below). A downstream fork creates and
   commits its own `src/links.json` as its link database; because upstream never
   tracks that path, the fork's `links.json` never conflicts on `git pull`.
-- `src/index.html` is a search + paginated listing page over `links.json`.
+- `src/index.html` is a search + paginated listing page over `links.json`. Its
+  current search query round-trips through the `?s=` URL param (e.g.
+  `/?s=git`), so a filtered view can be copied and shared as a link.
 - `src/404.html` is the redirect handler. Any request for `/<alias>` doesn't
   match a real file, so the host (GitHub Pages / nginx) falls back to serving
   `404.html`. Its inline script reads the requested path, looks up the alias
@@ -93,6 +95,10 @@ directly anyway).
   JSON-parse error handling unit testable.
 - `src/assets/config.js` — deployment-level settings (currently just
   `PAGE_SIZE`), kept separate from `links.json`'s content data.
+- `src/assets/url.js` — pure `getParam(href, key)` / `setParam(href, key,
+  value)` for reading and rewriting a single query-string parameter on an
+  absolute URL string, no DOM. Exists so the shareable-search-link feature
+  (below) is unit testable without `jsdom`.
 - `src/assets/app.js` — `index.html`'s glue: calls `loadLinks`/`pagerState`/
   `links.js` for the actual logic and handles DOM rendering and event
   wiring itself. Its top-level code only calls `init(document, fetch)`;
@@ -102,6 +108,15 @@ directly anyway).
   guards against `index.html`'s element IDs (`#search`, `#link-list`,
   `#pager`, `#count`) drifting out of sync with `app.js`, since the test
   loads the real `src/index.html` markup rather than a hand-rolled fixture.
+  On load it seeds the search box and `query` state from the `?s=` URL
+  param (via `url.js`'s `getParam`, read from `doc.location.href` before
+  the async `loadLinks` resolves, so it's correct on first paint regardless
+  of fetch timing); on every `input` event it calls
+  `doc.defaultView.history.replaceState` (not `pushState`, so typing
+  doesn't spam back-button history with one entry per keystroke) via
+  `url.js`'s `setParam`, keeping the current search shareable from the
+  address bar. Only the search text round-trips this way — page number is
+  deliberately excluded.
 - `src/404.html` inlines its own network-probing bootstrap (has to — it can't
   know the base prefix needed to load an external script until it's detected
   it), then dynamically `import()`s `assets/links.js` for the actual
