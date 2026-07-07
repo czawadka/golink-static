@@ -38,6 +38,11 @@ function manyLinks(count) {
 
 async function setup(fetchFn, url = "https://go.example/") {
   const dom = new JSDOM(indexHtml, { url });
+  dom.window.navigator.clipboard = {
+    writeText: async (text) => {
+      dom.window.__copiedText = text;
+    }
+  };
   await init(dom.window.document, fetchFn);
   return dom.window.document;
 }
@@ -50,9 +55,26 @@ test("init renders list items from the real index.html markup (guards against ID
   );
   const items = doc.querySelectorAll("#link-list .link-item");
   assert.equal(items.length, 1);
-  assert.equal(items[0].querySelector("a").textContent, "docs");
-  assert.equal(items[0].querySelector("a").getAttribute("href"), "https://example.com/docs");
+  assert.equal(items[0].querySelector(".alias").textContent, "docs");
+  assert.equal(items[0].querySelector(".alias").getAttribute("href"), "https://go.example/docs");
+  assert.equal(items[0].querySelector(".target").getAttribute("href"), "https://example.com/docs");
   assert.equal(items[0].querySelector(".description").textContent, "Team docs");
+});
+
+test("init renders a copy icon button that copies the full alias link to the clipboard", async () => {
+  const doc = await setup(
+    fakeFetchOk([{ alias: "docs", url: "https://example.com/docs" }]),
+    "https://go.example/"
+  );
+  const item = doc.querySelector("#link-list .link-item");
+  const copyBtn = item.querySelector(".copy-btn");
+  assert.equal(copyBtn.getAttribute("aria-label"), "Copy link");
+
+  copyBtn.click();
+  await Promise.resolve();
+
+  assert.equal(doc.defaultView.__copiedText, "https://go.example/docs");
+  assert.equal(copyBtn.getAttribute("aria-label"), "Copied!");
 });
 
 test("init omits the description span when an entry has none", async () => {
@@ -147,7 +169,7 @@ test("searching filters the list and resets to page 1", async () => {
 
   const items = doc.querySelectorAll("#link-list .link-item");
   assert.equal(items.length, 1);
-  assert.equal(items[0].querySelector("a").textContent, "wiki");
+  assert.equal(items[0].querySelector(".alias").textContent, "wiki");
 });
 
 test("init prepopulates search from the SEARCH_PARAM= URL param and filters results", async () => {
@@ -161,7 +183,7 @@ test("init prepopulates search from the SEARCH_PARAM= URL param and filters resu
   assert.equal(doc.getElementById("search").value, "wiki");
   const items = doc.querySelectorAll("#link-list .link-item");
   assert.equal(items.length, 1);
-  assert.equal(items[0].querySelector("a").textContent, "wiki");
+  assert.equal(items[0].querySelector(".alias").textContent, "wiki");
 });
 
 test("typing into search updates the SEARCH_PARAM= URL param live", async () => {
