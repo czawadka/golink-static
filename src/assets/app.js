@@ -4,6 +4,26 @@ import { loadLinks } from "./loader.js";
 import { PAGE_SIZE, SEARCH_PARAM } from "./config.js";
 import { getParam, setParam } from "./url.js";
 
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+function copyText(win, text) {
+  if (win.navigator.clipboard && win.navigator.clipboard.writeText) {
+    return win.navigator.clipboard.writeText(text);
+  }
+  const textarea = win.document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  win.document.body.appendChild(textarea);
+  textarea.select();
+  win.document.execCommand("copy");
+  win.document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
 export function init(doc, fetchFn) {
   let allLinks = [];
   let query = getParam(doc.location.href, SEARCH_PARAM);
@@ -34,10 +54,44 @@ export function init(doc, fetchFn) {
       const li = doc.createElement("li");
       li.className = "link-item";
 
-      const a = doc.createElement("a");
-      a.href = entry.url;
-      a.textContent = entry.alias;
-      li.appendChild(a);
+      const linkRow = doc.createElement("div");
+      linkRow.className = "link-row";
+
+      const aliasUrl = new URL(entry.alias, doc.location.href).href;
+
+      const aliasEl = doc.createElement("a");
+      aliasEl.className = "alias";
+      aliasEl.href = aliasUrl;
+      aliasEl.textContent = entry.alias;
+      linkRow.appendChild(aliasEl);
+
+      const copyBtn = doc.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "copy-btn";
+      copyBtn.innerHTML = COPY_ICON;
+      copyBtn.setAttribute("aria-label", "Copy link");
+      copyBtn.title = "Copy link";
+      copyBtn.addEventListener("click", () => {
+        copyText(doc.defaultView, aliasUrl).then(() => {
+          copyBtn.innerHTML = CHECK_ICON;
+          copyBtn.setAttribute("aria-label", "Copied!");
+          copyBtn.title = "Copied!";
+          doc.defaultView.setTimeout(() => {
+            copyBtn.innerHTML = COPY_ICON;
+            copyBtn.setAttribute("aria-label", "Copy link");
+            copyBtn.title = "Copy link";
+          }, 1500);
+        });
+      });
+      linkRow.appendChild(copyBtn);
+
+      const target = doc.createElement("a");
+      target.className = "target";
+      target.href = entry.url;
+      target.textContent = entry.url;
+      linkRow.appendChild(target);
+
+      li.appendChild(linkRow);
 
       if (entry.description) {
         const desc = doc.createElement("span");

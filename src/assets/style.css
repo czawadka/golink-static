@@ -38,25 +38,62 @@ h1 {
 }
 
 .link-item {
-  padding: 0.5rem 0;
+  padding: 0.3rem 0;
   border-bottom: 1px solid #8884;
   display: flex;
-  gap: 0.75rem;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
-.link-item a {
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.link-item .alias {
   font-weight: 600;
   text-decoration: none;
 }
 
-.link-item a:hover {
+.link-item .alias:hover {
+  text-decoration: underline;
+}
+
+.link-item .copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 0.3rem;
+  border: 1px solid #8888;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.link-item .copy-btn:hover {
+  opacity: 1;
+}
+
+.link-item .target {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  word-break: break-all;
+}
+
+.link-item .target:hover {
   text-decoration: underline;
 }
 
 .link-item .description {
-  opacity: 0.7;
-  font-size: 0.9rem;
+  opacity: 0.65;
+  font-size: 0.85rem;
 }
 
 .empty {
