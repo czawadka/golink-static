@@ -26,10 +26,12 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Provide links.json (fall back to example)
         run: '[ -f src/links.json ] || cp src/links.example.json src/links.json'
+      - name: Fingerprint assets
+        run: python3 scripts/fingerprint.py --src src --out dist
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: src
+          path: dist
 
   deploy-pages:
     needs: build-pages
