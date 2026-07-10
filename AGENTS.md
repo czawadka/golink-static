@@ -82,8 +82,26 @@ directly anyway).
 ## Code layout
 
 - `src/assets/links.js` — pure functions only (`aliasFromPath`, `findByAlias`,
-  `filterLinks`, `paginate`), no fetching, no DOM, no globals. This is the
-  single source of truth for alias/lookup/pagination logic over link data.
+  `resolveAlias`, `filterLinks`, `paginate`), no fetching, no DOM, no globals.
+  This is the single source of truth for alias/lookup/pagination logic over
+  link data. `resolveAlias(links, alias, origin, basePrefix)` handles an
+  entry whose `url` is itself another alias on the same site (a relative
+  path, or a same-origin absolute URL): it walks the chain against the
+  already-fetched `links` array — no extra fetches — and returns the final
+  destination entry, so `404.html` only ever issues a single redirect even
+  for a multi-hop chain. A cycle (including a single self-referencing entry)
+  or a chain that points at a nonexistent alias resolves to `null`, treated
+  the same as an unknown alias. Link authors don't need to hardcode the
+  deployment's base prefix into a chained `url` — `aliasFromPath` only
+  strips `basePrefix` when the path actually starts with it. A chained `url`
+  should be written as a bare relative alias name (e.g. `gh`, see
+  `links.example.json`'s `g`/`gh`/`github` chain) — **not** `/gh`. A leading
+  `/` is root-relative per URL semantics, so it ignores the deployment's base
+  prefix entirely; `resolveAlias` itself tolerates this (it falls through to
+  the alias's last path segment either way), but `app.js` renders `entry.url`
+  verbatim as the landing page's destination `<a href>`, and there a leading
+  `/` under a non-root base prefix (e.g. GitHub Pages' `/reponame/`) points
+  at the origin root instead of `/reponame/gh`.
 - `src/assets/pager.js` — pure `pagerState(page, totalPages)`, no DOM. Derives
   prev/next disabled flags, the "Page X of Y" label, and the target page
   numbers for prev/next clicks, so that button-state/off-by-one logic is
@@ -121,6 +139,9 @@ directly anyway).
   know the base prefix needed to load an external script until it's detected
   it), then dynamically `import()`s `assets/links.js` for the actual
   alias/lookup logic once the prefix is known, so that logic isn't duplicated.
+  It calls `resolveAlias` (not `findByAlias` directly) so a chained alias
+  resolves in one page load instead of `location.replace`-ing to another
+  alias, 404ing again, and re-fetching `links.json` a second time.
   The whole `boot()` flow is wrapped in `.catch(() => showConfigError())` —
   this is what actually matters for reliability: earlier, a missing catch
   here meant any failure (including a failed dynamic import) left the page

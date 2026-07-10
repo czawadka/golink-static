@@ -16,6 +16,34 @@ export function findByAlias(links, alias) {
   return links.find((entry) => entry.alias.toLowerCase() === needle);
 }
 
+export function resolveAlias(links, alias, origin, basePrefix) {
+  const visited = new Set();
+  let current = alias;
+
+  while (true) {
+    const key = current.toLowerCase();
+    if (visited.has(key)) return null;
+    visited.add(key);
+
+    const entry = findByAlias(links, current);
+    if (!entry) return null;
+
+    let target;
+    try {
+      target = new URL(entry.url, origin);
+    } catch (e) {
+      return entry;
+    }
+
+    if (target.origin !== origin) return entry;
+
+    const nextAlias = aliasFromPath(target.pathname, basePrefix);
+    if (!nextAlias) return entry;
+
+    current = nextAlias;
+  }
+}
+
 export function filterLinks(links, query) {
   const q = (query || "").trim().toLowerCase();
   if (!q) return links;

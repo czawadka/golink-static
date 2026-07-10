@@ -66,7 +66,7 @@
       }
     }
 
-    const { aliasFromPath, findByAlias } = await import(`${basePrefix}/assets/links.js`);
+    const { aliasFromPath, resolveAlias } = await import(`${basePrefix}/assets/links.js`);
     const alias = aliasFromPath(pathname, basePrefix);
     const homeHref = `${basePrefix}/`;
 
@@ -75,7 +75,7 @@
       return;
     }
 
-    const entry = findByAlias(links, alias);
+    const entry = resolveAlias(links, alias, window.location.origin, basePrefix);
     if (entry) {
       window.location.replace(entry.url);
     } else {
