@@ -23,5 +23,7 @@
   { "alias": "vpn", "url": "https://example.com/vpn", "description": "VPN setup" },
   { "alias": "it-helpdesk", "url": "https://example.com/it-helpdesk", "description": "IT support requests" },
   { "alias": "team/design", "url": "https://example.com/design-team", "description": "Design team page" },
-  { "alias": "team/product", "url": "https://example.com/product-team", "description": "Product team page" }
+  { "alias": "team/product", "url": "https://example.com/product-team", "description": "Product team page" },
+  { "alias": "g", "url": "gh", "description": "Chained alias example (hop 1 of 3) - resolves through gh, then github" },
+  { "alias": "gh", "url": "github", "description": "Chained alias example (hop 2 of 3) - resolves through github" }
 ]

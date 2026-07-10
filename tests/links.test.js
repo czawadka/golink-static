@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliasFromPath, findByAlias, filterLinks, paginate } from "../src/assets/links.js";
+import { aliasFromPath, findByAlias, resolveAlias, filterLinks, paginate } from "../src/assets/links.js";
 
 test("aliasFromPath strips a known base prefix", () => {
   assert.equal(aliasFromPath("/golink-static/docs", "/golink-static"), "docs");
@@ -37,6 +37,71 @@ test("findByAlias matches multi-segment aliases", () => {
 test("findByAlias returns undefined when nothing matches", () => {
   assert.equal(findByAlias([], "docs"), undefined);
   assert.equal(findByAlias([{ alias: "docs", url: "x" }], "wiki"), undefined);
+});
+
+test("resolveAlias returns the entry directly when its url isn't a chain", () => {
+  const links = [{ alias: "docs", url: "https://example.com/docs" }];
+  const entry = resolveAlias(links, "docs", "https://site.example", "");
+  assert.equal(entry.url, "https://example.com/docs");
+});
+
+test("resolveAlias follows a single-hop chain via a relative path", () => {
+  const links = [
+    { alias: "a", url: "/b" },
+    { alias: "b", url: "https://external.example/dest" }
+  ];
+  const entry = resolveAlias(links, "a", "https://site.example", "");
+  assert.equal(entry.url, "https://external.example/dest");
+});
+
+test("resolveAlias follows multi-hop chains", () => {
+  const links = [
+    { alias: "a", url: "/b" },
+    { alias: "b", url: "/c" },
+    { alias: "c", url: "https://external.example/dest" }
+  ];
+  const entry = resolveAlias(links, "a", "https://site.example", "");
+  assert.equal(entry.url, "https://external.example/dest");
+});
+
+test("resolveAlias follows a bare relative (no leading slash) chain link under a non-root base prefix", () => {
+  const links = [
+    { alias: "a", url: "b" },
+    { alias: "b", url: "https://external.example/dest" }
+  ];
+  const entry = resolveAlias(links, "a", "https://site.example", "/golink-static");
+  assert.equal(entry.url, "https://external.example/dest");
+});
+
+test("resolveAlias returns null when the starting alias doesn't exist", () => {
+  assert.equal(resolveAlias([], "missing", "https://site.example", ""), null);
+});
+
+test("resolveAlias returns null when a chained alias points to a nonexistent alias", () => {
+  const links = [{ alias: "a", url: "/b" }];
+  assert.equal(resolveAlias(links, "a", "https://site.example", ""), null);
+});
+
+test("resolveAlias returns null for a single self-referencing entry", () => {
+  const links = [{ alias: "a", url: "/a" }];
+  assert.equal(resolveAlias(links, "a", "https://site.example", ""), null);
+});
+
+test("resolveAlias detects a two-hop cycle and returns null instead of looping forever", () => {
+  const links = [
+    { alias: "a", url: "/b" },
+    { alias: "b", url: "/a" }
+  ];
+  assert.equal(resolveAlias(links, "a", "https://site.example", ""), null);
+});
+
+test("resolveAlias respects the base prefix when detecting internal aliases", () => {
+  const links = [
+    { alias: "a", url: "https://site.example/golink-static/b" },
+    { alias: "b", url: "https://external.example/dest" }
+  ];
+  const entry = resolveAlias(links, "a", "https://site.example", "/golink-static");
+  assert.equal(entry.url, "https://external.example/dest");
 });
 
 test("filterLinks with an empty query returns the original order unchanged", () => {
