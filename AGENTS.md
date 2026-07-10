@@ -1,8 +1,11 @@
 # golink-static
 
-A static go-link / URL-shortener service. No backend, no build step — a
-static file host (GitHub Pages, nginx, or a Docker container) serving plain
-HTML/JS/JSON is all it needs.
+A static go-link / URL-shortener service. No backend — a static file host
+(GitHub Pages, nginx, or a Docker container) serving plain HTML/JS/JSON is
+all it needs. The one exception is a small, deliberate build step,
+`scripts/fingerprint.py`, that content-hashes the asset/data folder names at
+deploy time for cache-busting (see "Asset fingerprinting" below) — nothing
+else here needs a bundler or transpiler.
 
 ## How it works
 
@@ -38,9 +41,13 @@ work standalone), while a downstream fork commits its own `src/links.json` and
 pulls upstream updates without ever conflicting on it — upstream doesn't track
 that path. It is **not** gitignored; downstream is expected to `git add` it.
 
-Runtime is deliberately untouched: `app.js` and `404.html` still fetch a single
-`/links.json`, so the base-prefix detection below needs no extra probes. Each
-serving context instead produces `/links.json`, falling back to
+Runtime *source* is deliberately untouched: `app.js` and `404.html` still
+fetch a plain `links.json`, so the base-prefix detection below needs no extra
+probes. (In production this literal is rewritten to a hashed path by
+`scripts/fingerprint.py` — see "Asset fingerprinting" below — but that's a
+build-time concern; the source files themselves never hardcode a deployment's
+folder hash.) Each serving context instead produces `/links.json` (dev server)
+or a fingerprinted `links.json` (Pages/Docker), falling back to
 `links.example.json` only when the real file is absent — and always **decides
 once at build/deploy time**, since the served file is a static fact for a given
 deploy:
@@ -57,6 +64,49 @@ deploy:
   `links.json` if present, else `links.example.json`) and serves it at the
   `/links.json` URL. The working tree isn't ephemeral, so it deliberately does
   not create an untracked file.
+
+## Asset fingerprinting (cache-busting)
+
+`scripts/fingerprint.py` copies `src/` to a build output directory (`dist/`
+by default) and mutates only the copy — `src/` itself is never touched, so
+`tests/*.test.js` (which import `../src/assets/*.js` directly) and
+`dev/serve.py` (which serves `src/` as-is) are both unaffected.
+
+It hashes two groups **separately**, into two differently-named folders:
+
+- `assets/` (all of `app.js`, `config.js`, `links.js`, `loader.js`,
+  `pager.js`, `style.css`, `url.js`) is hashed as one unit and the whole
+  directory is renamed to `assets-<hash>/`. Sibling `import`s between these
+  files need no rewriting at all — a relative specifier like `./links.js`
+  resolves correctly regardless of what the parent folder is called, since
+  they all move together.
+- `links.json` is hashed on its own and moved into a sibling `data-<hash>/`
+  directory.
+
+These are kept separate, not combined into one folder, because they change at
+very different rates: the JS/CSS is expected to stabilize over time, while
+`links.json` is expected to be edited constantly (every alias addition from
+every downstream fork). Sharing one hash would mean a pure data edit forces
+browsers to needlessly refetch the untouched JS/CSS bundle too.
+
+Only `index.html` and `404.html` reference these by a fixed path, so the
+script rewrites exactly those: `index.html`'s `<script src>`/`<link href>`,
+`404.html`'s dynamic `import()` of `links.js` and its two `links.json`
+probes, and `app.js`'s own `links.json` fetch call (which lives inside
+`assets-<hash>/` after the rename, but still needs to be told where
+`data-<hash>/links.json` ended up). `index.html`/`404.html` themselves are
+**never** renamed — GitHub Pages/nginx find them by their fixed names
+(default document, custom 404 page).
+
+Because `app.js` embeds the current `data-<hash>` path, a `links.json`-only
+change also changes `app.js`'s folder hash (so `assets-<hash>/` gets a new
+name too) even though none of the actual JS logic changed — a deliberately
+accepted, cheap side effect (a few KB) in exchange for not needing a runtime
+manifest lookup.
+
+This runs in the GitHub Pages workflow and the Docker build stage — see
+"GitHub Pages setup" and "Docker" below — but deliberately **not** in
+`dev/serve.py` (see "Local development").
 
 ## Base-prefix auto-detection
 
@@ -150,8 +200,11 @@ directly anyway).
   handler was the real fix, and it lets `404.html` reuse `links.js` safely.
 
 Everything else is plain ES modules (`export`/`import`) — no `window`
-globals, no build step, no runtime dependencies. The deployed site itself
-(everything under `src/`) still needs zero dependencies to serve.
+globals, no bundler or transpiler, no runtime dependencies. ("No build step"
+above refers to this: nothing here needs compiling. `scripts/fingerprint.py`
+is a rename-and-rewrite pass over already-valid files, not compilation, and
+it ships nothing into the deployed site itself, which still needs zero
+dependencies to serve.)
 
 ## Running tests
 
@@ -185,7 +238,10 @@ real link data".) Aliases are matched case-insensitively, so
 don't define two aliases that differ only by case. Avoid aliases that
 collide with real top-level paths (`assets`, `index`, `404`, `links`,
 `favicon.ico`, ...) — the server serves the real file/folder before ever
-falling back to `404.html`, so a colliding alias is unreachable.
+falling back to `404.html`, so a colliding alias is unreachable. In
+production this also includes `assets-*` and `data-*` prefixes (see "Asset
+fingerprinting"), though colliding with one of those by chance is
+astronomically unlikely given the hash.
 
 ## Local development
 
@@ -205,6 +261,12 @@ Then visit the printed URL, try searching, and visit `/docs`, `/team/eng`,
 and a bogus alias to exercise the redirect and not-found paths. (`serve.py`
 serves `src/`, not the repo root.)
 
+`serve.py` deliberately never runs `scripts/fingerprint.py` — it serves
+`src/`'s plain, unhashed filenames directly (including `links.json`) with a
+`no-cache` header, so local edits show up on the next refresh with no rebuild
+step. It does not simulate production's immutable-folder caching; that's only
+exercised via a Docker build or the Pages workflow.
+
 ## GitHub Pages setup
 
 The site lives in `src/`, not the repo root or `docs/`, so GitHub Pages'
@@ -217,7 +279,8 @@ it's not a build step (there's nothing to build), just
 1. Push to a **public** repo (private-repo Pages needs GitHub Pro/Team/Enterprise).
 2. Settings → Pages → Source: **GitHub Actions** (not "Deploy from branch").
 3. Push to `main` (or run the workflow manually) — `.github/workflows/pages.yml`
-   publishes `src/` as-is.
+   runs `scripts/fingerprint.py` (see "Asset fingerprinting") and publishes
+   the resulting `dist/`, not `src/` directly.
 4. `src/.nojekyll` disables Jekyll processing (needs to live inside `src/`,
    the actual published root, not the repo root).
 5. `src/404.html` is picked up automatically by GitHub Pages, no extra config.
@@ -233,11 +296,18 @@ Built now (not just planned) to validate that the same static bundle and
 404.html mechanism works identically outside GitHub Pages — `docker/nginx.conf`
 uses `error_page 404 /404.html;` to reproduce the same fallback behavior.
 
-`COPY src/` bakes in `links.example.json` (and `links.json` too, if the build
-context has one), and a build-time `RUN` provisions `links.json` from the
-example when it's absent — so a plain `docker build` of this repo produces a
-working demo image, and a downstream fork's committed `links.json` is used as-is
-(see "Example vs. real link data").
+The image is a multi-stage build: a `python:3.12-alpine` stage copies in
+`src/`, provisions `links.json` from the example when it's absent (same
+fallback as the Pages workflow — so a plain `docker build` of this repo
+produces a working demo image, and a downstream fork's committed `links.json`
+is used as-is, see "Example vs. real link data"), then runs
+`scripts/fingerprint.py`. Only its `dist/` output is copied into the final
+`nginx:alpine` stage — the image never ships Python.
+
+`docker/nginx.conf` gives fingerprinted `assets-<hash>/`/`data-<hash>/` paths
+`Cache-Control: public, max-age=31536000, immutable`, and everything else
+(including `index.html`/`404.html`, which reference the current hash)
+`no-cache, must-revalidate`.
 
 ## Known limitations / future ideas
 

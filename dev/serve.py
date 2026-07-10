@@ -61,9 +61,22 @@ def make_handler(prefix_path):
                 fs_path = os.path.join(fs_path, "index.html")
             if os.path.isfile(fs_path):
                 self.path = effective_path
+                self._cacheable = True
                 return super().do_GET()
 
             self.send_404()
+
+        def end_headers(self):
+            # Only the real-file branch above sets this; 404 responses stay
+            # fully uncached (default), same as before. Real files get
+            # no-cache rather than a max-age: dev never runs
+            # scripts/fingerprint.py, so nothing served here is actually
+            # immutable the way a hashed assets-<hash>/data-<hash> folder is
+            # in prod -- pretending otherwise (even briefly) risks masking a
+            # local edit. Still gets cheap 304s via If-Modified-Since.
+            if getattr(self, "_cacheable", False):
+                self.send_header("Cache-Control", "no-cache")
+            super().end_headers()
 
         def send_404(self):
             not_found = ROOT / "404.html"
