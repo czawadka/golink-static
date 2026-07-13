@@ -28,6 +28,8 @@ export function init(doc, fetchFn) {
   let allLinks = [];
   let query = getParam(doc.location.href, SEARCH_PARAM);
   let page = 1;
+  let selectedIndex = -1;
+  let totalPages = 1;
 
   const searchInput = doc.getElementById("search");
   const listEl = doc.getElementById("link-list");
@@ -42,6 +44,7 @@ export function init(doc, fetchFn) {
     page = paginated.page;
     const pageItems = paginated.pageItems;
     const pager = pagerState(page, paginated.totalPages);
+    totalPages = paginated.totalPages;
 
     listEl.innerHTML = "";
     if (pageItems.length === 0) {
@@ -132,6 +135,44 @@ export function init(doc, fetchFn) {
       pagerEl.appendChild(label);
       pagerEl.appendChild(next);
     }
+
+    selectItem(0);
+  }
+
+  function getItemEls() {
+    return Array.from(listEl.querySelectorAll(".link-item"));
+  }
+
+  function selectItem(index) {
+    const items = getItemEls();
+    items.forEach((el) => el.classList.remove("selected"));
+    if (items.length === 0) {
+      selectedIndex = -1;
+      return;
+    }
+    selectedIndex = index;
+    const current = items[selectedIndex];
+    current.classList.add("selected");
+    if (typeof current.scrollIntoView === "function") {
+      current.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function moveSelection(delta) {
+    const items = getItemEls();
+    if (items.length === 0) return;
+
+    const newIndex = selectedIndex + delta;
+    if (newIndex >= items.length) {
+      page = page >= totalPages ? 1 : page + 1;
+      render();
+    } else if (newIndex < 0) {
+      page = page <= 1 ? totalPages : page - 1;
+      render();
+      selectItem(getItemEls().length - 1);
+    } else {
+      selectItem(newIndex);
+    }
   }
 
   searchInput.addEventListener("input", (e) => {
@@ -139,6 +180,28 @@ export function init(doc, fetchFn) {
     page = 1;
     doc.defaultView.history.replaceState(null, "", setParam(doc.location.href, SEARCH_PARAM, query));
     render();
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveSelection(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveSelection(-1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const items = getItemEls();
+      const li = items[selectedIndex];
+      const aliasEl = li && li.querySelector(".alias");
+      if (aliasEl) aliasEl.click();
+    }
+  });
+
+  doc.defaultView.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      searchInput.focus();
+    }
   });
 
   return loadLinks(fetchFn, "links.json")

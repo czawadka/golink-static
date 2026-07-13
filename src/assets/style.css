@@ -96,6 +96,13 @@ h1 {
   font-size: 0.85rem;
 }
 
+.link-item.selected {
+  background: #8883;
+  outline: 1px solid #8888;
+  outline-offset: -1px;
+  border-radius: 0.3rem;
+}
+
 .empty {
   opacity: 0.6;
   padding: 0.5rem 0;
