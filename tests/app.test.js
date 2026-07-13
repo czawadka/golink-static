@@ -340,3 +340,28 @@ test("selecting a page via a pager button click also selects that page's first i
   assert.equal(items[0].querySelector(".alias").textContent, "link-10");
   assert.equal(items[0].classList.contains("selected"), true);
 });
+
+test("regains focus on the search input when the page is restored from bfcache", async () => {
+  const doc = await setup(fakeFetchOk([{ alias: "docs", url: "https://example.com/docs" }]));
+  const searchInput = doc.getElementById("search");
+  searchInput.blur();
+  assert.notEqual(doc.activeElement, searchInput);
+
+  const event = new doc.defaultView.Event("pageshow");
+  Object.defineProperty(event, "persisted", { value: true });
+  doc.defaultView.dispatchEvent(event);
+
+  assert.equal(doc.activeElement, searchInput);
+});
+
+test("a non-bfcache pageshow does not force focus onto the search input", async () => {
+  const doc = await setup(fakeFetchOk([{ alias: "docs", url: "https://example.com/docs" }]));
+  const searchInput = doc.getElementById("search");
+  searchInput.blur();
+
+  const event = new doc.defaultView.Event("pageshow");
+  Object.defineProperty(event, "persisted", { value: false });
+  doc.defaultView.dispatchEvent(event);
+
+  assert.notEqual(doc.activeElement, searchInput);
+});

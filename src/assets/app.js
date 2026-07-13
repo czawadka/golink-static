@@ -198,6 +198,12 @@ export function init(doc, fetchFn) {
     }
   });
 
+  doc.defaultView.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      searchInput.focus();
+    }
+  });
+
   return loadLinks(fetchFn, "links.json")
     .then((result) => {
       if (result.ok) {
