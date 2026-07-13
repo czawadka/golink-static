@@ -185,6 +185,21 @@ directly anyway).
   `url.js`'s `setParam`, keeping the current search shareable from the
   address bar. Only the search text round-trips this way — page number is
   deliberately excluded.
+  `render()` also always selects the first visible result (via a
+  `selectedIndex`/`totalPages` closure-state pair, re-derived from the
+  freshly rendered `.link-item` elements rather than tracked separately)
+  so that Enter opens the top match immediately after typing, with no
+  ArrowDown needed first — that's the point of the keyboard-nav feature
+  below. A `keydown` listener on `#search` handles ArrowDown/ArrowUp
+  (`moveSelection`, which only toggles a `.selected` class within the
+  current page — no `render()` call — unless the move crosses a page
+  boundary, in which case it advances/retreats `page` and calls the
+  existing `render()`, wrapping page 1 ⇄ the last page at the ends; ArrowUp
+  crossing backward explicitly overrides `render()`'s "select first item"
+  default to select the arrived-at page's *last* item instead, since
+  arriving from the bottom) and Enter (which calls `.click()` on the
+  selected item's `.alias` anchor rather than recomputing its href, so it
+  always matches what a mouse click on that anchor already does).
 - `src/404.html` inlines its own network-probing bootstrap (has to — it can't
   know the base prefix needed to load an external script until it's detected
   it), then dynamically `import()`s `assets/links.js` for the actual
