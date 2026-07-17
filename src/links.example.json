@@ -24,6 +24,13 @@
   { "alias": "it-helpdesk", "url": "https://example.com/it-helpdesk", "description": "IT support requests" },
   { "alias": "team/design", "url": "https://example.com/design-team", "description": "Design team page" },
   { "alias": "team/product", "url": "https://example.com/product-team", "description": "Product team page" },
+  { "alias": "metrics", "url": "https://example.com/metrics", "description": "Product metrics dashboards" },
+  { "alias": "logs", "url": "https://example.com/logs", "description": "Centralized logging" },
+  { "alias": "ci", "url": "https://example.com/ci", "description": "Continuous integration dashboard" },
+  { "alias": "releases", "url": "https://example.com/releases", "description": "Release calendar" },
+  { "alias": "support", "url": "https://example.com/support", "description": "Customer support portal" },
+  { "alias": "brand", "url": "https://example.com/brand", "description": "Brand assets and guidelines" },
+  { "alias": "benefits", "url": "https://example.com/benefits", "description": "Employee benefits portal" },
   { "alias": "g", "url": "gh", "description": "Chained alias example (hop 1 of 3) - resolves through gh, then github" },
   { "alias": "gh", "url": "github", "description": "Chained alias example (hop 2 of 3) - resolves through github" }
 ]

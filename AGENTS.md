@@ -22,9 +22,10 @@ else here needs a bundler or transpiler.
   (see "Example vs. real link data" below). A downstream fork creates and
   commits its own `src/links.json` as its link database; because upstream never
   tracks that path, the fork's `links.json` never conflicts on `git pull`.
-- `src/index.html` is a search + paginated listing page over `links.json`. Its
-  current search query round-trips through the `?s=` URL param (e.g.
-  `/?s=git`), so a filtered view can be copied and shared as a link.
+- `src/index.html` is a search + infinite-scroll listing page over
+  `links.json`. Its current search query round-trips through the `?s=` URL
+  param (e.g. `/?s=git`), so a filtered view can be copied and shared as a
+  link.
 - `src/404.html` is the redirect handler. Any request for `/<alias>` doesn't
   match a real file, so the host (GitHub Pages / nginx) falls back to serving
   `404.html`. Its inline script reads the requested path, looks up the alias
@@ -75,7 +76,7 @@ by default) and mutates only the copy — `src/` itself is never touched, so
 It hashes two groups **separately**, into two differently-named folders:
 
 - `assets/` (all of `app.js`, `config.js`, `links.js`, `loader.js`,
-  `pager.js`, `style.css`, `url.js`) is hashed as one unit and the whole
+  `style.css`, `url.js`) is hashed as one unit and the whole
   directory is renamed to `assets-<hash>/`. Sibling `import`s between these
   files need no rewriting at all — a relative specifier like `./links.js`
   resolves correctly regardless of what the parent folder is called, since
@@ -132,9 +133,16 @@ directly anyway).
 ## Code layout
 
 - `src/assets/links.js` — pure functions only (`aliasFromPath`, `findByAlias`,
-  `resolveAlias`, `filterLinks`, `paginate`), no fetching, no DOM, no globals.
-  This is the single source of truth for alias/lookup/pagination logic over
-  link data. `resolveAlias(links, alias, origin, basePrefix)` handles an
+  `resolveAlias`, `filterLinks`, `takeBatch`), no fetching, no DOM, no globals.
+  This is the single source of truth for alias/lookup/infinite-scroll-batching
+  logic over link data. `takeBatch(items, offset, count)` returns the next
+  `{ batch, nextOffset, hasMore }` delta slice starting at `offset` — it's a
+  delta, not a cumulative page, so the caller only ever appends `batch`
+  rather than re-rendering everything already on screen. Passing
+  `count = Infinity` isn't a special case; it just returns everything
+  remaining, which is what lets "load the rest of the list" (see `app.js`'s
+  `moveSelection` below) reuse this same function instead of needing a
+  second code path. `resolveAlias(links, alias, origin, basePrefix)` handles an
   entry whose `url` is itself another alias on the same site (a relative
   path, or a same-origin absolute URL): it walks the chain against the
   already-fetched `links` array — no extra fetches — and returns the final
@@ -152,30 +160,32 @@ directly anyway).
   verbatim as the landing page's destination `<a href>`, and there a leading
   `/` under a non-root base prefix (e.g. GitHub Pages' `/reponame/`) points
   at the origin root instead of `/reponame/gh`.
-- `src/assets/pager.js` — pure `pagerState(page, totalPages)`, no DOM. Derives
-  prev/next disabled flags, the "Page X of Y" label, and the target page
-  numbers for prev/next clicks, so that button-state/off-by-one logic is
-  unit tested instead of only eyeballed.
 - `src/assets/loader.js` — `loadLinks(fetchFn, url)`, no DOM, no global
   `fetch` reference (it's passed in, so tests can inject a fake). Always
   *resolves* a discriminated `{ ok: true, links }` / `{ ok: false, message }`
   result rather than rejecting, which is what makes the fetch/HTTP-status/
   JSON-parse error handling unit testable.
 - `src/assets/config.js` — deployment-level settings (currently just
-  `PAGE_SIZE`), kept separate from `links.json`'s content data.
+  `BATCH_SIZE`, the number of items rendered per infinite-scroll batch),
+  kept separate from `links.json`'s content data.
 - `src/assets/url.js` — pure `getParam(href, key)` / `setParam(href, key,
   value)` for reading and rewriting a single query-string parameter on an
   absolute URL string, no DOM. Exists so the shareable-search-link feature
   (below) is unit testable without `jsdom`.
-- `src/assets/app.js` — `index.html`'s glue: calls `loadLinks`/`pagerState`/
-  `links.js` for the actual logic and handles DOM rendering and event
-  wiring itself. Its top-level code only calls `init(document, fetch)`;
-  `init(doc, fetchFn)` itself is exported and takes the document/fetch as
-  parameters precisely so tests can inject a fake DOM (via `jsdom`) and a
-  fake `fetchFn` instead of touching the real browser globals. This also
-  guards against `index.html`'s element IDs (`#search`, `#link-list`,
-  `#pager`, `#count`) drifting out of sync with `app.js`, since the test
-  loads the real `src/index.html` markup rather than a hand-rolled fixture.
+- `src/assets/app.js` — `index.html`'s glue: calls `loadLinks`/`takeBatch`/
+  `links.js` for the actual logic and handles DOM rendering, the
+  infinite-scroll observer, and event wiring itself. Its top-level code only
+  calls `init(document, fetch)`; `init(doc, fetchFn, IntersectionObserverCtor
+  = doc.defaultView.IntersectionObserver)` itself is exported and takes the
+  document/fetch/observer-constructor as parameters precisely so tests can
+  inject a fake DOM (via `jsdom`, which doesn't implement
+  `IntersectionObserver`), a fake `fetchFn`, and a fake observer instead of
+  touching the real browser globals — the default parameter resolves to the
+  real browser's `IntersectionObserver` off the already-bound `doc`, so the
+  real top-level call site needs no changes. This also guards against
+  `index.html`'s element IDs (`#search`, `#link-list`, `#scroll-sentinel`,
+  `#count`) drifting out of sync with `app.js`, since the test loads the
+  real `src/index.html` markup rather than a hand-rolled fixture.
   On load it seeds the search box and `query` state from the `?s=` URL
   param (via `url.js`'s `getParam`, read from `doc.location.href` before
   the async `loadLinks` resolves, so it's correct on first paint regardless
@@ -183,21 +193,41 @@ directly anyway).
   `doc.defaultView.history.replaceState` (not `pushState`, so typing
   doesn't spam back-button history with one entry per keystroke) via
   `url.js`'s `setParam`, keeping the current search shareable from the
-  address bar. Only the search text round-trips this way — page number is
-  deliberately excluded.
-  `render()` also always selects the first visible result (via a
-  `selectedIndex`/`totalPages` closure-state pair, re-derived from the
-  freshly rendered `.link-item` elements rather than tracked separately)
-  so that Enter opens the top match immediately after typing, with no
-  ArrowDown needed first — that's the point of the keyboard-nav feature
-  below. A `keydown` listener on `#search` handles ArrowDown/ArrowUp
-  (`moveSelection`, which only toggles a `.selected` class within the
-  current page — no `render()` call — unless the move crosses a page
-  boundary, in which case it advances/retreats `page` and calls the
-  existing `render()`, wrapping page 1 ⇄ the last page at the ends; ArrowUp
-  crossing backward explicitly overrides `render()`'s "select first item"
-  default to select the arrived-at page's *last* item instead, since
-  arriving from the bottom) and Enter (which calls `.click()` on the
+  address bar. Only the search text round-trips this way.
+  The per-item DOM (alias link, copy button, target link, optional
+  description) is built by `buildItemEl(entry)` and appended via
+  `appendItems(entries)`, the single reuse point between the initial
+  `render()` and every incremental "load more" append — so that ~50-line DOM
+  construction block isn't duplicated between the two call sites.
+  `#scroll-sentinel` (a sibling of `#link-list` in `index.html`, deliberately
+  outside the `<ul>` so `render()`'s `listEl.innerHTML = ""` never touches or
+  recreates it) is observed by a single `IntersectionObserver` created once
+  per `init()` call; its callback calls `loadMore()` whenever the sentinel
+  becomes visible. Both `render()` (after a fresh search) and `loadMore()`
+  (after every append) call `reobserveSentinel()`, which does an
+  `unobserve()`+`observe()` pair on the same target — necessary because the
+  native `IntersectionObserver` only fires on *threshold crossings*, not on
+  arbitrary DOM mutations, but `observe()` itself always queues a fresh
+  intersection check per spec, so this is what makes loading chain
+  naturally (a short result list keeps re-triggering `loadMore()` across
+  animation frames until the growing list finally pushes the sentinel
+  off-screen or `hasMore` goes false) and what makes a fresh, narrower
+  search correctly notice if it now leaves the sentinel on-screen.
+  `render()` always selects the first visible result (via a
+  `selectedIndex`/`hasMore`/`loadedCount` closure-state trio, re-derived
+  from the freshly rendered `.link-item` elements rather than tracked
+  separately) so that Enter opens the top match immediately after typing,
+  with no ArrowDown needed first — that's the point of the keyboard-nav
+  feature below. A `keydown` listener on `#search` handles ArrowDown/ArrowUp
+  (`moveSelection`, which only toggles a `.selected` class among the
+  currently rendered items — no reload — unless the move crosses a
+  boundary: past the last rendered item while `hasMore` calls `loadMore()`
+  and selects the first newly-appended item, only wrapping to the first
+  item once everything is loaded; before the first item calls
+  `loadMore(Infinity)` — a no-op once already fully loaded, otherwise it
+  renders every remaining match in one shot, since the data's already in
+  memory and this is a pure rendering operation, not a fetch — and selects
+  the now-true last item) and Enter (which calls `.click()` on the
   selected item's `.alias` anchor rather than recomputing its href, so it
   always matches what a mouse click on that anchor already does). It also
   listens for `pageshow` on `doc.defaultView` and refocuses `#search` when
@@ -230,12 +260,16 @@ dependencies to serve.)
 
 ## Running tests
 
-`src/assets/links.js`, `src/assets/pager.js`, and `src/assets/loader.js` have
-no DOM/browser dependencies, so they're imported directly by Node's built-in
-test runner. `src/assets/app.js`'s exported `init()` takes a DOM `document`
-as a parameter, so `tests/app.test.js` supplies one via `jsdom` (the one
-devDependency in `package.json`, dev-time only — it's not part of the
-deployed site and doesn't affect `src/`'s zero-runtime-dependency bundle):
+`src/assets/links.js` and `src/assets/loader.js` have no DOM/browser
+dependencies, so they're imported directly by Node's built-in test runner.
+`src/assets/app.js`'s exported `init()` takes a DOM `document` and an
+`IntersectionObserver` constructor as parameters, so `tests/app.test.js`
+supplies a `jsdom` document (the one devDependency in `package.json`,
+dev-time only — it's not part of the deployed site and doesn't affect
+`src/`'s zero-runtime-dependency bundle) alongside a fake `fetchFn` and a
+fake `FakeIntersectionObserver` test double (jsdom doesn't implement the
+real `IntersectionObserver`; the fake lets tests manually invoke its
+callback to simulate the scroll sentinel entering the viewport):
 
 ```
 npm test

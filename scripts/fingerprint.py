@@ -30,7 +30,6 @@ ASSET_FILENAMES = [
     "config.js",
     "links.js",
     "loader.js",
-    "pager.js",
     "style.css",
     "url.js",
 ]

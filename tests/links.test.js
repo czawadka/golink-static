@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliasFromPath, findByAlias, resolveAlias, filterLinks, paginate } from "../src/assets/links.js";
+import { aliasFromPath, findByAlias, resolveAlias, filterLinks, takeBatch } from "../src/assets/links.js";
 
 test("aliasFromPath strips a known base prefix", () => {
   assert.equal(aliasFromPath("/golink-static/docs", "/golink-static"), "docs");
@@ -122,28 +122,48 @@ test("filterLinks returns an empty array when nothing matches", () => {
   assert.deepEqual(filterLinks([{ alias: "docs" }], "zzz"), []);
 });
 
-test("paginate slices to the requested page", () => {
+test("takeBatch slices the requested window and reports more remaining", () => {
   const items = [1, 2, 3, 4, 5];
-  const result = paginate(items, 2, 2);
-  assert.deepEqual(result.pageItems, [3, 4]);
-  assert.equal(result.page, 2);
-  assert.equal(result.totalPages, 3);
+  const result = takeBatch(items, 0, 2);
+  assert.deepEqual(result.batch, [1, 2]);
+  assert.equal(result.nextOffset, 2);
+  assert.equal(result.hasMore, true);
 });
 
-test("paginate clamps an out-of-range page down to the last valid page", () => {
+test("takeBatch continues from a given offset", () => {
+  const items = [1, 2, 3, 4, 5];
+  const result = takeBatch(items, 2, 2);
+  assert.deepEqual(result.batch, [3, 4]);
+  assert.equal(result.nextOffset, 4);
+  assert.equal(result.hasMore, true);
+});
+
+test("takeBatch reports hasMore false once the slice reaches the end exactly", () => {
+  const items = [1, 2, 3, 4];
+  const result = takeBatch(items, 2, 2);
+  assert.deepEqual(result.batch, [3, 4]);
+  assert.equal(result.hasMore, false);
+});
+
+test("takeBatch with Infinity count returns everything remaining", () => {
+  const items = [1, 2, 3, 4, 5];
+  const result = takeBatch(items, 1, Infinity);
+  assert.deepEqual(result.batch, [2, 3, 4, 5]);
+  assert.equal(result.nextOffset, 5);
+  assert.equal(result.hasMore, false);
+});
+
+test("takeBatch on an empty array returns an empty batch with no more remaining", () => {
+  const result = takeBatch([], 0, 10);
+  assert.deepEqual(result.batch, []);
+  assert.equal(result.nextOffset, 0);
+  assert.equal(result.hasMore, false);
+});
+
+test("takeBatch at an offset already past the end returns an empty batch", () => {
   const items = [1, 2, 3];
-  const result = paginate(items, 99, 2);
-  assert.equal(result.page, 2);
-  assert.deepEqual(result.pageItems, [3]);
-});
-
-test("paginate clamps a page below 1 up to 1", () => {
-  const result = paginate([1, 2, 3], 0, 2);
-  assert.equal(result.page, 1);
-});
-
-test("paginate reports at least 1 total page for an empty list", () => {
-  const result = paginate([], 1, 10);
-  assert.equal(result.totalPages, 1);
-  assert.deepEqual(result.pageItems, []);
+  const result = takeBatch(items, 3, 10);
+  assert.deepEqual(result.batch, []);
+  assert.equal(result.nextOffset, 3);
+  assert.equal(result.hasMore, false);
 });
