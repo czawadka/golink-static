@@ -1,7 +1,6 @@
-import { filterLinks, paginate } from "./links.js";
-import { pagerState } from "./pager.js";
+import { filterLinks, takeBatch } from "./links.js";
 import { loadLinks } from "./loader.js";
-import { PAGE_SIZE, SEARCH_PARAM } from "./config.js";
+import { BATCH_SIZE, SEARCH_PARAM } from "./config.js";
 import { getParam, setParam } from "./url.js";
 
 const COPY_ICON =
@@ -24,118 +23,120 @@ function copyText(win, text) {
   return Promise.resolve();
 }
 
-export function init(doc, fetchFn) {
+export function init(doc, fetchFn, IntersectionObserverCtor = doc.defaultView.IntersectionObserver) {
   let allLinks = [];
   let query = getParam(doc.location.href, SEARCH_PARAM);
-  let page = 1;
+  let filtered = [];
+  let loadedCount = 0;
+  let hasMore = false;
   let selectedIndex = -1;
-  let totalPages = 1;
 
   const searchInput = doc.getElementById("search");
   const listEl = doc.getElementById("link-list");
-  const pagerEl = doc.getElementById("pager");
+  const sentinelEl = doc.getElementById("scroll-sentinel");
   const countEl = doc.getElementById("count");
 
   searchInput.value = query;
 
+  function buildItemEl(entry) {
+    const li = doc.createElement("li");
+    li.className = "link-item";
+
+    const linkRow = doc.createElement("div");
+    linkRow.className = "link-row";
+
+    const aliasUrl = new URL(entry.alias, doc.location.href).href;
+
+    const aliasEl = doc.createElement("a");
+    aliasEl.className = "alias";
+    aliasEl.href = aliasUrl;
+    aliasEl.textContent = entry.alias;
+    linkRow.appendChild(aliasEl);
+
+    const copyBtn = doc.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "copy-btn";
+    copyBtn.innerHTML = COPY_ICON;
+    copyBtn.setAttribute("aria-label", "Copy link");
+    copyBtn.title = "Copy link";
+    copyBtn.addEventListener("click", () => {
+      copyText(doc.defaultView, aliasUrl).then(() => {
+        copyBtn.innerHTML = CHECK_ICON;
+        copyBtn.setAttribute("aria-label", "Copied!");
+        copyBtn.title = "Copied!";
+        doc.defaultView.setTimeout(() => {
+          copyBtn.innerHTML = COPY_ICON;
+          copyBtn.setAttribute("aria-label", "Copy link");
+          copyBtn.title = "Copy link";
+        }, 1500);
+      });
+    });
+    linkRow.appendChild(copyBtn);
+
+    const target = doc.createElement("a");
+    target.className = "target";
+    target.href = entry.url;
+    target.textContent = entry.url;
+    linkRow.appendChild(target);
+
+    li.appendChild(linkRow);
+
+    if (entry.description) {
+      const desc = doc.createElement("span");
+      desc.className = "description";
+      desc.textContent = entry.description;
+      li.appendChild(desc);
+    }
+
+    return li;
+  }
+
+  function appendItems(entries) {
+    entries.forEach((entry) => listEl.appendChild(buildItemEl(entry)));
+  }
+
+  function reobserveSentinel() {
+    observer.unobserve(sentinelEl);
+    observer.observe(sentinelEl);
+  }
+
+  function loadMore(count = BATCH_SIZE) {
+    if (!hasMore) return false;
+    const result = takeBatch(filtered, loadedCount, count);
+    appendItems(result.batch);
+    loadedCount = result.nextOffset;
+    hasMore = result.hasMore;
+    reobserveSentinel();
+    return true;
+  }
+
+  const observer = new IntersectionObserverCtor(
+    (entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry && entry.isIntersecting) loadMore();
+    },
+    { rootMargin: "200px 0px" }
+  );
+
   function render() {
-    const visible = filterLinks(allLinks, query);
-    const paginated = paginate(visible, page, PAGE_SIZE);
-    page = paginated.page;
-    const pageItems = paginated.pageItems;
-    const pager = pagerState(page, paginated.totalPages);
-    totalPages = paginated.totalPages;
+    filtered = filterLinks(allLinks, query);
 
     listEl.innerHTML = "";
-    if (pageItems.length === 0) {
+    if (filtered.length === 0) {
       const empty = doc.createElement("li");
       empty.className = "empty";
       empty.textContent = "No links match your search.";
       listEl.appendChild(empty);
     }
-    pageItems.forEach((entry) => {
-      const li = doc.createElement("li");
-      li.className = "link-item";
 
-      const linkRow = doc.createElement("div");
-      linkRow.className = "link-row";
+    const result = takeBatch(filtered, 0, BATCH_SIZE);
+    appendItems(result.batch);
+    loadedCount = result.nextOffset;
+    hasMore = result.hasMore;
 
-      const aliasUrl = new URL(entry.alias, doc.location.href).href;
+    countEl.textContent = filtered.length + (filtered.length === 1 ? " link" : " links");
 
-      const aliasEl = doc.createElement("a");
-      aliasEl.className = "alias";
-      aliasEl.href = aliasUrl;
-      aliasEl.textContent = entry.alias;
-      linkRow.appendChild(aliasEl);
-
-      const copyBtn = doc.createElement("button");
-      copyBtn.type = "button";
-      copyBtn.className = "copy-btn";
-      copyBtn.innerHTML = COPY_ICON;
-      copyBtn.setAttribute("aria-label", "Copy link");
-      copyBtn.title = "Copy link";
-      copyBtn.addEventListener("click", () => {
-        copyText(doc.defaultView, aliasUrl).then(() => {
-          copyBtn.innerHTML = CHECK_ICON;
-          copyBtn.setAttribute("aria-label", "Copied!");
-          copyBtn.title = "Copied!";
-          doc.defaultView.setTimeout(() => {
-            copyBtn.innerHTML = COPY_ICON;
-            copyBtn.setAttribute("aria-label", "Copy link");
-            copyBtn.title = "Copy link";
-          }, 1500);
-        });
-      });
-      linkRow.appendChild(copyBtn);
-
-      const target = doc.createElement("a");
-      target.className = "target";
-      target.href = entry.url;
-      target.textContent = entry.url;
-      linkRow.appendChild(target);
-
-      li.appendChild(linkRow);
-
-      if (entry.description) {
-        const desc = doc.createElement("span");
-        desc.className = "description";
-        desc.textContent = entry.description;
-        li.appendChild(desc);
-      }
-      listEl.appendChild(li);
-    });
-
-    countEl.textContent = visible.length + (visible.length === 1 ? " link" : " links");
-
-    pagerEl.innerHTML = "";
-    if (pager.totalPages > 1) {
-      const prev = doc.createElement("button");
-      prev.type = "button";
-      prev.textContent = "Prev";
-      prev.disabled = pager.prevDisabled;
-      prev.addEventListener("click", () => {
-        page = pager.prevPage;
-        render();
-      });
-
-      const next = doc.createElement("button");
-      next.type = "button";
-      next.textContent = "Next";
-      next.disabled = pager.nextDisabled;
-      next.addEventListener("click", () => {
-        page = pager.nextPage;
-        render();
-      });
-
-      const label = doc.createElement("span");
-      label.className = "page-label";
-      label.textContent = pager.label;
-
-      pagerEl.appendChild(prev);
-      pagerEl.appendChild(label);
-      pagerEl.appendChild(next);
-    }
-
+    reobserveSentinel();
     selectItem(0);
   }
 
@@ -164,11 +165,14 @@ export function init(doc, fetchFn) {
 
     const newIndex = selectedIndex + delta;
     if (newIndex >= items.length) {
-      page = page >= totalPages ? 1 : page + 1;
-      render();
+      if (hasMore) {
+        loadMore();
+        selectItem(items.length);
+      } else {
+        selectItem(0);
+      }
     } else if (newIndex < 0) {
-      page = page <= 1 ? totalPages : page - 1;
-      render();
+      loadMore(Infinity);
       selectItem(getItemEls().length - 1);
     } else {
       selectItem(newIndex);
@@ -177,7 +181,6 @@ export function init(doc, fetchFn) {
 
   searchInput.addEventListener("input", (e) => {
     query = e.target.value;
-    page = 1;
     doc.defaultView.history.replaceState(null, "", setParam(doc.location.href, SEARCH_PARAM, query));
     render();
   });

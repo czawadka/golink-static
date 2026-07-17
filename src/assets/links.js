@@ -54,13 +54,12 @@ export function filterLinks(links, query) {
   });
 }
 
-export function paginate(items, page, pageSize) {
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-  const clampedPage = Math.min(Math.max(page, 1), totalPages);
-  const start = (clampedPage - 1) * pageSize;
+export function takeBatch(items, offset, count) {
+  const start = Math.min(Math.max(offset, 0), items.length);
+  const end = Math.min(items.length, start + count);
   return {
-    pageItems: items.slice(start, start + pageSize),
-    page: clampedPage,
-    totalPages
+    batch: items.slice(start, end),
+    nextOffset: end,
+    hasMore: end < items.length
   };
 }
